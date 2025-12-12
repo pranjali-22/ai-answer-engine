@@ -33,8 +33,15 @@ export default function Home() {
       });
 
       // TODO: Handle the response from the chat API to display the AI response in the UI
+      const data = await response.json();
 
+      // Add the AI response returned by the POST API
+      const aiMessage = {
+        role: "ai" as const,
+        content: data.ai,
+      };
 
+      setMessages(prev => [...prev, aiMessage]);
 
 
     } catch (error) {
