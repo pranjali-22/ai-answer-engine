@@ -1,8 +1,13 @@
 // src/lib/scraper.ts
 import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
+import { Redis } from "@upstash/redis";
 
-
+// Initialize Redis client
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!
+});
 
 export interface ScrapedContent {
   title: string;
@@ -11,8 +16,11 @@ export interface ScrapedContent {
   url: string;
   wordCount?: number;
   scrapedWith?: 'cheerio' | 'puppeteer';
+  cachedAt?: number;
 }
 
+const CACHE_TTL = 7 * (24 * 60 * 60); // 7 days in seconds
+const MAX_CACHE_SIZE = 1024000; // 1MB
 
 export interface InputDetection {
   hasUrl: boolean;
@@ -31,8 +39,6 @@ export function detectInputType(input: string): InputDetection {
   };
 }
 
-
-
 export function isContentValid(content: any): boolean {
   return (
     content &&
@@ -42,6 +48,91 @@ export function isContentValid(content: any): boolean {
   );
 }
 
+function isValidScrapedContent(content: any): content is ScrapedContent {
+  return (
+    content &&
+    typeof content === 'object' &&
+    typeof content.title === 'string' &&
+    typeof content.mainContent === 'string' &&
+    typeof content.url === 'string' &&
+    content.mainContent.length > 100
+  );
+}
+
+function getCacheKey(url: string): string {
+  const sanitizedUrl = url.substring(0, 200);
+  return `scrape:${sanitizedUrl}`;
+}
+
+async function getCachedContent(url: string): Promise<ScrapedContent | null> {
+  try {
+    const cacheKey = getCacheKey(url);
+    console.log(cacheKey)
+    const cached = await redis.get(cacheKey);
+
+    if (!cached) {
+      console.log("CACHE NOT HIT")
+      return null;
+    }
+
+    let parsed: any;
+    if (typeof cached === 'string') {
+      try {
+        parsed = JSON.parse(cached);
+      } catch (parseError) {
+        console.error('Cache parse error:', parseError);
+        await redis.del(cacheKey);
+        return null;
+      }
+    } else {
+      parsed = cached;
+    }
+
+    if (isValidScrapedContent(parsed)) {
+      console.log(`Cache HIT for ${url}`);
+      return parsed;
+    }
+
+    await redis.del(cacheKey);
+    return null;
+  } catch (error) {
+    console.error('Cache retrieval error:', error);
+    return null;
+  }
+}
+
+async function cacheContent(
+  url: string,
+  content: ScrapedContent
+): Promise<void> {
+  try {
+    const cacheKey = getCacheKey(url);
+    const contentToCache = {
+      ...content,
+      cachedAt: Date.now()
+    };
+    console.log("cachekey",cacheKey)
+
+    if (!isValidScrapedContent(contentToCache)) {
+      console.log('Invalid content, skipping cache');
+      return;
+    }
+
+    const serialized = JSON.stringify(contentToCache);
+
+    if (serialized.length > MAX_CACHE_SIZE) {
+      console.log('Content too large for cache');
+      return;
+    }
+    console.log(`Before Cached content for ${url}`);
+    console.log(serialized)
+
+    await redis.set(cacheKey, serialized, { ex: CACHE_TTL });
+    console.log(`Cached content for ${url}`);
+  } catch (error) {
+    console.error('Cache storage error:', error);
+  }
+}
 
 export async function scrapeWebsite(url: string): Promise<ScrapedContent> {
   // Validate URL
@@ -51,13 +142,24 @@ export async function scrapeWebsite(url: string): Promise<ScrapedContent> {
     throw new Error('Invalid URL provided');
   }
 
+  // Check cache first
+  const cachedContent = await getCachedContent(url);
+  if (cachedContent) {
+    return cachedContent;
+  }
+
+  let scrapedContent: ScrapedContent;
+
   try {
     console.log('Attempting to scrape with Cheerio...');
     const content = await scrapeWithCheerio(url);
 
     if (isContentValid(content)) {
       console.log('Successfully scraped with Cheerio');
-      return { ...content, scrapedWith: 'cheerio' };
+      scrapedContent = { ...content, scrapedWith: 'cheerio' };
+      await cacheContent(url, scrapedContent);
+      console.log('Successfully cached content');
+      return scrapedContent;
     }
 
     console.log('Cheerio result insufficient, trying Puppeteer...');
@@ -67,10 +169,12 @@ export async function scrapeWebsite(url: string): Promise<ScrapedContent> {
 
   // Fallback to Puppeteer for dynamic content
   console.log('Attempting to scrape with Puppeteer...');
-  const content = await scrapeWithPuppeteer(url);
-  return { ...content, scrapedWith: 'puppeteer' };
-}
+  scrapedContent = await scrapeWithPuppeteer(url);
+  scrapedContent.scrapedWith = 'puppeteer';
 
+  await cacheContent(url, scrapedContent);
+  return scrapedContent;
+}
 
 export async function scrapeWithCheerio(url: string): Promise<ScrapedContent> {
   try {
@@ -161,9 +265,6 @@ export async function scrapeWithPuppeteer(url: string): Promise<ScrapedContent> 
       waitUntil: 'networkidle2',
       timeout: 30000,
     });
-
-    // Wait for content to render
-    // await page.waitForTimeout(2000);
 
     // Extract content
     const content = await page.evaluate(() => {
