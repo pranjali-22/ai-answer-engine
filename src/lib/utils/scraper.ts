@@ -2,6 +2,8 @@
 import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
 
+
+
 export interface ScrapedContent {
   title: string;
   mainContent: string;
@@ -10,6 +12,26 @@ export interface ScrapedContent {
   wordCount?: number;
   scrapedWith?: 'cheerio' | 'puppeteer';
 }
+
+
+export interface InputDetection {
+  hasUrl: boolean;
+  url: string | null;
+  query: string;
+}
+
+export function detectInputType(input: string): InputDetection {
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  const urls = input.match(urlPattern);
+
+  return {
+    hasUrl: !!urls,
+    url: urls ? urls[0] : null,
+    query: input.replace(urlPattern, "").trim()
+  };
+}
+
+
 
 export function isContentValid(content: any): boolean {
   return (

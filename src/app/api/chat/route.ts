@@ -1,8 +1,8 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { detectInputType } from "@/lib/utils";
-import { callGroq, callGroqWithContext } from "@/lib/groq";
-import { scrapeWebsite } from "@/lib/scraper";
+import { detectInputType } from "@/lib/utils/scraper";
+import { callGroq, callGroqWithContext } from "@/lib/utils/groqClient";
+import { scrapeWebsite } from "@/lib/utils/scraper";
 
 export async function POST(req: NextRequest) {
   try {
