@@ -17,7 +17,7 @@ An AI-powered Answer Engine built with Next.js and TypeScript that provides accu
 **Web Scraping**: Cheerio, Puppeteer
 **Infrastructure**: Redis (rate limiting)
 
-### **Challenges — Technical Solutions**
+### **Challenges & Technical Solutions**
 Multi-Format Data Extraction
 - Abstracted scraper interface per data type
 - YouTube: transcript extraction via metadata APIs
