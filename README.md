@@ -11,11 +11,11 @@ An AI-powered Answer Engine built with Next.js and TypeScript that provides accu
 - Rate Limiting
 
 **Tech Stack**
-**Frontend**: Next.js (App Router), TypeScript, React
-**Backend**: Next.js API Routes
-**AI / LLM**: Groq API
-**Web Scraping**: Cheerio, Puppeteer
-**Infrastructure**: Redis (rate limiting)
+- **Frontend**: Next.js (App Router), TypeScript, React
+- **Backend**: Next.js API Routes
+- **AI / LLM**: Groq API
+- **Web Scraping**: Cheerio, Puppeteer
+- **Infrastructure**: Redis (rate limiting)
 
 ### **Challenges & Technical Solutions**
 Multi-Format Data Extraction
